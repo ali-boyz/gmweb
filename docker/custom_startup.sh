@@ -1,46 +1,27 @@
 #!/bin/bash
-# GMWEB CUSTOM STARTUP - NGINX-FIRST BLOCKING ARCHITECTURE
-# This script ONLY handles the blocking phases (permissions, environment, nginx)
-# Everything else (git, NVM, supervisor, services) runs async in rest-of-startup.sh
-#
-# PHASE 0: Permissions and environment setup (BLOCKING)
-# PHASE 0: nginx setup (BLOCKING)
-# PHASE 1: Spawn rest-of-startup.sh async (NON-BLOCKING)
-#
-# Returns to allow s6-rc services to proceed immediately after nginx is ready
 
 set +e
 
-# ===== PHASE 0: CRITICAL SETUP =====
 HOME_DIR="/config"
 LOG_DIR="$HOME_DIR/logs"
 
-# Unset problematic environment variables IMMEDIATELY
 unset LD_PRELOAD
 unset NPM_CONFIG_PREFIX
 
-# CRITICAL: Detect actual abc user UID/GID from the system
-# LinuxServer.io images use PUID env var, but if not set, detect from pwd
 ABC_UID=$(id -u abc 2>/dev/null || echo "")
 ABC_GID=$(id -g abc 2>/dev/null || echo "")
 
-# Fallback to PUID/PGID environment vars if abc user not found
 PUID="${ABC_UID:-${PUID:-1000}}"
 PGID="${ABC_GID:-${PGID:-1000}}"
 
-# CRITICAL: Fix /config ownership and permissions - three-layer approach
-# Layer 1: Try standard chown (works if /config is already accessible)
 sudo chown -R "$PUID:$PGID" "/config" 2>/dev/null || true
 
-# Layer 2: Force permissions to allow abc user access
 sudo chmod -R u+rwX,g+rX,o-rwx "/config" 2>/dev/null || true
 
-# Layer 3: Ensure /config is writable by retrying with different approach
 if [ ! -w "/config" ]; then
   sudo chmod 755 "/config" 2>/dev/null || true
 fi
 
-# Clear all logs on every boot - fresh start
 sudo rm -rf "$LOG_DIR" 2>/dev/null || true
 sudo mkdir -p "$LOG_DIR" 2>/dev/null || true
 if [ -d "$LOG_DIR" ]; then
@@ -48,8 +29,6 @@ if [ -d "$LOG_DIR" ]; then
   sudo chown "$PUID:$PGID" "$LOG_DIR" 2>/dev/null || true
 fi
 
-# CRITICAL: Setup persistent /config/tmp for Claude Code and other tools
-# This ensures temp files survive container restarts
 sudo mkdir -p "$HOME_DIR/tmp" 2>/dev/null || true
 if [ -d "$HOME_DIR/tmp" ]; then
   sudo chmod 1777 "$HOME_DIR/tmp" 2>/dev/null || true
@@ -66,17 +45,14 @@ log() {
 
 log "===== GMWEB STARTUP (NGINX-FIRST BLOCKING ARCHITECTURE) ====="
 
-# CRITICAL: Create npm wrapper script for abc user
 mkdir -p /tmp/gmweb-wrappers
 cat > /tmp/gmweb-wrappers/npm-as-abc.sh << 'NPM_WRAPPER_EOF'
 #!/bin/bash
 export NVM_DIR=/config/nvm
 export HOME=/config
 export GMWEB_DIR=/config/.gmweb
-# CRITICAL: Unset conflicting npm config BEFORE sourcing NVM
 unset NPM_CONFIG_PREFIX
 unset npm_config_prefix
-# Set npm cache/prefix AFTER NVM is sourced
 export npm_config_cache=/config/.gmweb/npm-cache
 export npm_config_prefix=/config/.gmweb/npm-global
 [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
@@ -92,13 +68,10 @@ chmod +x /tmp/gmweb-wrappers/npm-as-abc.sh
 
 log "Initial /config ownership and permissions fixed"
 
-# CRITICAL: Remove s6-rc service down markers to allow auto-start
-# LinuxServer creates these at boot, but we want services to auto-start
 log "Phase 0.1: Enabling s6-rc services (removing down markers)"
 sudo rm -f /run/service/svc-*/down 2>/dev/null || true
 log "✓ s6-rc services enabled for auto-start"
 
-# CRITICAL PHASE 0.5: Comprehensive Permission Management
 log "Phase 0.5: Comprehensive home directory permission setup (PUID=$PUID, PGID=$PGID)"
 
 CRITICAL_PATHS=(
@@ -134,7 +107,6 @@ for path in "${CRITICAL_PATHS[@]}"; do
   fi
 done
 
-# Fix ownership of key dotfiles that tools may create as root or wrong user
 sudo chown "$PUID:$PGID" "$HOME_DIR/.gitconfig" 2>/dev/null || true
 sudo chown -R "$PUID:$PGID" "$HOME_DIR/.claude" 2>/dev/null || true
 sudo chown "$PUID:$PGID" "$HOME_DIR/.git-credentials" 2>/dev/null || true
@@ -151,17 +123,14 @@ log "✓ Phase 0: Permissions and environment ready (BLOCKING)"
 log "NOTE: All APT packages (unzip, jq, ttyd, gcloud, gh) install async in rest-of-startup.sh"
 log "      Nothing blocks nginx startup"
 
-# Cleanup and centralize installations
 log "Cleaning up legacy installations and ensuring clean state..."
 
 mkdir -p /config/.gmweb/{npm-cache,npm-global,tools,deps,cache}
 chown -R "$PUID:$PGID" /config/.gmweb 2>/dev/null || true
 chmod -R u+rwX,g+rX,o-rwx /config/.gmweb 2>/dev/null || true
 
-# Clean old installations
 sudo rm -rf /config/usr /config/.gmweb-deps /config/.gmweb-bashrc-setup /config/.gmweb-bashrc-setup-v2 /config/.gmweb-migrated-v2 2>/dev/null || true
 
-# Clean old Node versions
 for node_dir in /config/nvm/versions/node/v*; do
   if [ -d "$node_dir" ] && [[ ! "$node_dir" =~ v24\. ]]; then
     rm -rf "$node_dir" 2>/dev/null || true
@@ -170,7 +139,6 @@ done
 
 log "✓ Cleanup complete"
 
-# Compile close_range shim
 log "Compiling close_range shim..."
 sudo mkdir -p /opt/lib
 
@@ -200,31 +168,26 @@ ABC_UID=$(id -u abc 2>/dev/null || echo 1000)
 ABC_GID=$(id -g abc 2>/dev/null || echo 1000)
 RUNTIME_DIR="/run/user/$ABC_UID"
 
-# Create or fix permissions on runtime directory
 if [ ! -d "$RUNTIME_DIR" ]; then
   sudo mkdir -p "$RUNTIME_DIR" 2>/dev/null || true
   sudo chmod 700 "$RUNTIME_DIR" 2>/dev/null || true
   sudo chown "$ABC_UID:$ABC_GID" "$RUNTIME_DIR" 2>/dev/null || true
 fi
 
-# Fix npm cache and stale installs
 log "Cleaning persistent volume artifacts..."
 sudo rm -rf /config/.npm 2>/dev/null || true
 
-# Configure npm to use centralized directory
 GMWEB_DIR="/config/.gmweb"
 sudo mkdir -p "$GMWEB_DIR"/{npm-cache,npm-global,tools}
 sudo chown -R "$PUID:$PGID" "$GMWEB_DIR" 2>/dev/null || true
 sudo chmod -R u+rwX,g+rX,o-rwx "$GMWEB_DIR" 2>/dev/null || true
 
-# System-wide npmrc
 cat > /tmp/npmrc << 'NPMRC_EOF'
 cache=/config/.gmweb/npm-cache
 prefix=/config/.gmweb/npm-global
 NPMRC_EOF
 sudo cp /tmp/npmrc /etc/npmrc 2>/dev/null || true
 
-# User-level npmrc
 sudo cp /tmp/npmrc /config/.npmrc 2>/dev/null || true
 sudo chown abc:abc /config/.npmrc 2>/dev/null || true
 rm -f /tmp/npmrc
@@ -232,7 +195,6 @@ rm -f /tmp/npmrc
 export PATH="/config/.gmweb/npm-global/bin:$PATH"
 log "✓ Centralized gmweb directory configured"
 
-# Pre-clear npm cache early
 log "Phase 0.75: Pre-clearing npm cache directories..."
 if [ -d "$GMWEB_DIR/npm-cache" ]; then
   sudo rm -rf "$GMWEB_DIR/npm-cache" 2>/dev/null || true
@@ -253,8 +215,6 @@ export DBUS_SESSION_BUS_ADDRESS="unix:path=$RUNTIME_DIR/bus"
 
 log "✓ Phase 0.5-0.75 complete - system ready for blocking nginx setup"
 
-# ===== PHASE 0: NGINX SETUP (BLOCKING) =====
-# This MUST complete successfully before anything else starts
 log "Phase 0: Calling nginx-setup.sh (BLOCKING - must complete before proceeding)"
 
 if [ ! -f /custom-cont-init.d/nginx-setup.sh ]; then
@@ -262,7 +222,6 @@ if [ ! -f /custom-cont-init.d/nginx-setup.sh ]; then
   exit 1
 fi
 
-# Run nginx-setup.sh - this BLOCKS until nginx is confirmed listening
 if ! bash /custom-cont-init.d/nginx-setup.sh; then
   log "ERROR: nginx-setup.sh failed - cannot proceed"
   exit 1
@@ -270,7 +229,6 @@ fi
 
 log "✓ nginx blocking phase complete - nginx ready on port 80"
 
-# ===== PHASE 1: SPAWN REST-OF-STARTUP ASYNC (NON-BLOCKING) =====
 log "Phase 1: Spawning rest-of-startup.sh (non-blocking - returns immediately)"
 
 if [ ! -f /custom-cont-init.d/rest-of-startup.sh ]; then
@@ -278,7 +236,6 @@ if [ ! -f /custom-cont-init.d/rest-of-startup.sh ]; then
   exit 1
 fi
 
-# Spawn rest-of-startup.sh with nohup - it runs completely async
 nohup bash /custom-cont-init.d/rest-of-startup.sh > "$LOG_DIR/rest-of-startup.log" 2>&1 &
 REST_PID=$!
 log "✓ rest-of-startup.sh spawned (PID: $REST_PID)"
@@ -288,8 +245,6 @@ log "  - Phase 3: Supervisor and services"
 log "  - Phase 4: XFCE launcher"
 log "  - Phase 5: Background module installs"
 
-# Ensure Selkies uses WebSocket mode (WebRTC requires GStreamer which is unavailable)
-# Must run BEFORE s6-rc services start
 log "Phase 0: Ensuring Selkies WebSocket mode..."
 if [ -f /custom-cont-init.d/patch-selkies-webrtc.sh ]; then
   bash /custom-cont-init.d/patch-selkies-webrtc.sh >> "$LOG_DIR/startup.log" 2>&1

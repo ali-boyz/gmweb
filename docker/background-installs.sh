@@ -1,11 +1,4 @@
 #!/bin/bash
-# GMWEB Background Installs Script
-# This script runs asynchronously after custom_startup.sh completes and nginx is ready
-# It does NOT block supervisor or s6-rc services from starting
-# Services degrade gracefully if these modules are missing via health checks
-#
-# Usage: nohup /config/docker/background-installs.sh > /config/logs/background-installs.log 2>&1 &
-# (called from custom_startup.sh after supervisor starts)
 
 set +e
 
@@ -198,15 +191,12 @@ npm install -g wrangler 2>&1 | tail -3
 WRANGLER_INSTALL_EOF
 [ $? -eq 0 ] && log "✓ wrangler installed" || log "WARNING: wrangler install incomplete"
 
-# Phase 3.4: Run secondary startup installs (from startup/install.sh)
 log "Phase 3.4: Running secondary npm package installs..."
 bash /opt/gmweb-startup/install.sh 2>&1 | tail -10
 log "✓ Secondary npm installs complete"
 
-# Phase 3.5: Final comprehensive permission enforcement
 log "Phase 3.5: FINAL comprehensive ownership enforcement (catching all root files)..."
 
-# Stage 1: Recursively fix ALL files/dirs in critical directories
 for dir in /config/.gmweb /config/.nvm /config/.local /config/.cache /config/.config /config/workspace; do
   if [ -d "$dir" ]; then
     log "  Fixing all permissions in $dir..."
@@ -217,7 +207,6 @@ for dir in /config/.gmweb /config/.nvm /config/.local /config/.cache /config/.co
   fi
 done
 
-# Stage 2: Delete npm cache if it has ANY root-owned files
 if [ -d /config/.gmweb/npm-cache ]; then
   if sudo find /config/.gmweb/npm-cache -not -user 1000 2>/dev/null | grep -q .; then
     log "  Root-owned files found in npm cache - DELETING and recreating..."
@@ -228,7 +217,6 @@ if [ -d /config/.gmweb/npm-cache ]; then
   fi
 fi
 
-# Stage 3: Delete npm-global if it has ANY root-owned files
 if [ -d /config/.gmweb/npm-global ]; then
   if sudo find /config/.gmweb/npm-global -not -user 1000 2>/dev/null | grep -q .; then
     log "  Root-owned files found in npm-global - DELETING and recreating..."
@@ -239,7 +227,6 @@ if [ -d /config/.gmweb/npm-global ]; then
   fi
 fi
 
-# Stage 4: Final aggressive pass - nuke any remaining root files
 ROOT_FILES=$(sudo find /config -not -user 1000 -not -path "/config/.git/*" 2>/dev/null | wc -l)
 if [ "$ROOT_FILES" -gt 0 ]; then
   log "  Found $ROOT_FILES root-owned files - forcing ownership change..."
@@ -247,7 +234,6 @@ if [ "$ROOT_FILES" -gt 0 ]; then
   log "  ✓ All root-owned files reassigned to abc"
 fi
 
-# Stage 5: Final verification
 REMAINING_ROOT=$(sudo find /config -not -user 1000 -not -path "/config/.git/*" 2>/dev/null | wc -l)
 if [ "$REMAINING_ROOT" -gt 0 ]; then
   log "ERROR: Still found $REMAINING_ROOT root-owned files after final pass!"
@@ -263,5 +249,4 @@ fi
 log "===== GMWEB BACKGROUND INSTALLS COMPLETE ====="
 log "Services are now fully ready with all modules installed"
 
-# Create marker file to indicate completion
 touch /tmp/gmweb-installs-complete

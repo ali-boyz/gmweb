@@ -25,9 +25,6 @@ services:
     labels:
       - traefik.enable=true
       - traefik.http.services.gmweb.loadbalancer.server.port=80
-      # Transport gmweb-h1 is fully defined via Traefik's file provider
-      # (/data/coolify/proxy/dynamic/gmweb-transport.yaml on the Coolify
-      # host) - reference it with @file, not @docker.
       - traefik.http.services.gmweb.loadbalancer.serversTransport=gmweb-h1@file
 
 volumes:

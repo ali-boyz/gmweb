@@ -307,23 +307,18 @@ Runs on port 7890, proxied to `/molt/`. See https://docs.molt.bot/ for configura
 
 **Deployment:**
 ```bash
-# docker-compose: Set PASSWORD in environment
 docker-compose -e PASSWORD=MySecurePassword up -d
 
-# Or in docker-compose.yaml
 environment:
   - PASSWORD=MySecurePassword
 
-# Or docker run
 docker run -e PASSWORD=MySecurePassword gmweb:latest
 ```
 
 **⚠️ COMMON MISTAKE - Docker Syntax Error:**
 ```bash
-# ❌ WRONG - Using colon instead of equals (Docker will NOT set the variable)
 docker run -e PASSWORD:MySecurePassword gmweb:latest
 
-# ✅ CORRECT - Must use equals sign
 docker run -e PASSWORD=MySecurePassword gmweb:latest
 ```
 
@@ -333,7 +328,7 @@ docker run -e PASSWORD=MySecurePassword gmweb:latest
 
 **Verification:** After deployment with new PASSWORD:
 ```bash
-curl -u abc:MySecurePassword https://your-domain.com/files/  # Should succeed (200)
+curl -u abc:MySecurePassword https://your-domain.com/files/
 ```
 
 Without proper PASSWORD deployment, users will fail to authenticate even if services are running correctly.
@@ -347,13 +342,12 @@ AgentGUI is a multi-agent UI that allows interacting with Claude Code and OpenCo
 AgentGUI reads the `BASE_URL` environment variable to determine its routing prefix. The service is configured in `startup/services/agentgui.js`:
 
 ```javascript
-// Pass BASE_URL environment variable to agentgui server
 const childEnv = {
   ...env,
   HOME: '/config',
   PORT: String(PORT),
-  BASE_URL: '/gm',           // Router prefix for frontend
-  HOT_RELOAD: 'false',       // Disable in production
+  BASE_URL: '/gm',
+  HOT_RELOAD: 'false',
   NODE_ENV: 'production'
 };
 ```
@@ -386,22 +380,16 @@ Previous versions had agentgui disabled because:
 ### Testing AgentGUI
 
 ```bash
-# Verify agentgui process is running
 ps aux | grep agentgui
 
-# Test the /gm/ endpoint
 curl -u abc:password http://localhost/gm/ | head -20
 
-# Test agentgui API to discover agents
 curl -u abc:password http://localhost/gm/api/agents
 
-# Create a test conversation
 curl -u abc:password -X POST http://localhost/gm/api/conversations \
   -H "Content-Type: application/json" \
   -d '{"agentId":"claude-code","title":"Test"}' | head -5
 
-# WebSocket connectivity can be tested from browser console:
-# The frontend will establish sync connection automatically on page load
 ```
 
 ### Hot-Reload Disable Issue (Fixed)
@@ -412,11 +400,9 @@ curl -u abc:password -X POST http://localhost/gm/api/conversations \
 
 **Fix:** Changed from bash string execution to direct process spawn with `env` object:
 ```javascript
-// Before (broken):
 spawn('bash', ['-c', `PORT=${PORT} HOT_RELOAD=false bunx --latest agentgui@latest`], { env: childEnv })
 
-// After (fixed):
-spawn('bunx', ['--latest', 'agentgui@latest'], { env: childEnv })
+spawn('bunx', ['agentgui@1.0.1126'], { env: childEnv })
 ```
 
 This ensures all environment variables in `childEnv` (including `HOT_RELOAD`, `BASE_URL`, `NODE_ENV`) are properly passed to the bunx/agentgui process.
@@ -605,8 +591,8 @@ XDG_RUNTIME_DIR=/run/user/0
 XDG_CACHE_HOME=/config/.gmweb/cache
 BUN_INSTALL=/config/.gmweb/cache/.bun
 PASSWORD=<from deployment env var>
-PUID=1000  # User ID for abc user (LinuxServer base image standard)
-PGID=1000  # Group ID for abc user (LinuxServer base image standard)
+PUID=1000
+PGID=1000
 ```
 
 **PUID/PGID Usage:** The startup scripts use `PUID` and `PGID` environment variables to set ownership of all files in `/config`. This follows LinuxServer.io container standards. If not set, defaults to 1000:1000. To run with different UID/GID:

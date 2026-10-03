@@ -18,13 +18,10 @@ Recommended specs: 4 cores, 24GB RAM (Oracle Cloud free tier A1 shape works well
 ## Step 1: Install Docker Compose
 
 ```bash
-# Download Docker Compose
 sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
 
-# Make executable
 sudo chmod +x /usr/local/bin/docker-compose
 
-# Verify installation
 docker-compose --version
 ```
 
@@ -48,18 +45,12 @@ Oracle Cloud has **two firewalls** - both need to be configured.
 ### B. iptables on the VPS
 
 ```bash
-# Allow HTTP and HTTPS
 sudo iptables -I INPUT -p tcp --dport 80 -j ACCEPT
 sudo iptables -I INPUT -p tcp --dport 443 -j ACCEPT
 
-# Save the rules (Ubuntu/Debian)
 sudo apt-get install -y iptables-persistent
 sudo netfilter-persistent save
 
-# Or on Oracle Linux:
-# sudo firewall-cmd --permanent --add-port=80/tcp
-# sudo firewall-cmd --permanent --add-port=443/tcp
-# sudo firewall-cmd --reload
 ```
 
 ---
@@ -67,11 +58,9 @@ sudo netfilter-persistent save
 ## Step 3: Clone and Configure
 
 ```bash
-# Clone the repository
 git clone https://github.com/AnEntrypoint/gmweb.git
 cd gmweb
 
-# Create environment file
 cat > .env << 'EOF'
 PASSWORD=your-secure-password-here
 TZ=America/New_York
@@ -91,7 +80,6 @@ Edit `docker-compose.yaml` to expose ports 80 and 443:
 ```yaml
 services:
   gmweb:
-    # ... existing config ...
     ports:
       - "80:80"
       - "443:443"
@@ -118,7 +106,6 @@ docker-compose up -d --build
 The nginx config expects certs at `/config/ssl/`. Generate them after the container initializes:
 
 ```bash
-# Wait for container to initialize (~60 seconds), then generate certs
 docker-compose exec gmweb bash -c '
   mkdir -p /config/ssl
   openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
@@ -129,7 +116,6 @@ docker-compose exec gmweb bash -c '
   chmod 644 /config/ssl/cert.pem
 '
 
-# Reload nginx to pick up the certs
 docker-compose exec gmweb nginx -s reload
 ```
 
@@ -158,22 +144,17 @@ Once running, access via your VPS IP:
 
 ### View Logs
 ```bash
-# Docker logs
 docker-compose logs -f gmweb
 
-# Startup log (inside container)
 docker-compose exec gmweb cat /config/logs/startup.log
 
-# Supervisor log
 docker-compose exec gmweb tail -f /config/logs/supervisor.log
 ```
 
 ### Check if Ports are Open
 ```bash
-# From the VPS itself
 sudo ss -tlnp | grep -E ':80|:443'
 
-# From your local machine (test connectivity)
 nc -zv YOUR-VPS-IP 80
 nc -zv YOUR-VPS-IP 443
 ```
@@ -185,7 +166,7 @@ docker-compose restart gmweb
 
 ### Full Reset
 ```bash
-docker-compose down -v  # removes volumes
+docker-compose down -v
 docker-compose up -d --build
 ```
 

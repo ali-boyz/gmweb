@@ -1,8 +1,3 @@
-// Moltbot service - web UI for Moltinc workspace management
-// Provides molt.bot web interface for workspace configuration
-// User can configure after initial setup via the web UI
-// Docs: https://docs.molt.bot/
-
 import { execSync } from 'child_process';
 import { spawnAsAbcUser } from '../lib/service-utils.js';
 
@@ -19,8 +14,6 @@ export default {
     console.log(`[moltbot] Docs: https://docs.molt.bot/web`);
     console.log(`[moltbot] Getting Started: https://docs.molt.bot/start/getting-started`);
 
-    // Spawn moltbot via npx
-    // Using 'npm exec' pattern for reliable package execution
     const ps = spawnAsAbcUser(
       `npm exec -- molt web --port ${PORT} 2>&1 || npx -y molt web --port ${PORT}`,
       { ...env, MOLTBOT_PORT: String(PORT) }
@@ -56,7 +49,6 @@ export default {
   },
 
   async health() {
-    // Check if port is listening
     try {
       execSync(`lsof -i :${PORT} 2>/dev/null | grep -q LISTEN`, {
         stdio: 'pipe',

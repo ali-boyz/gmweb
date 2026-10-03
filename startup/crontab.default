@@ -2,17 +2,3 @@ SHELL=/bin/bash
 HOME=/config
 PATH=/config/.local/bin:/config/.gmweb/cache/.bun/bin:/config/.gmweb/npm-global/bin:/config/nvm/versions/node/v24.2.0/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 MAILTO=""
-
-# gmweb user crontab
-# This file persists at /config/crontab across container reboots
-# Edit this file directly - changes are picked up on next cron service health check
-# Cron reloads this file automatically every 30 seconds via supervisor health check
-#
-# Format:
-# minute hour day-of-month month day-of-week command
-#
-# Examples (uncomment to enable):
-# * * * * * echo "$(date) heartbeat" >> /config/logs/cron.log 2>&1
-# 0 * * * * curl -s http://localhost/gm/api/agents > /dev/null 2>&1
-# */5 * * * * node /config/workspace/my-script.js >> /config/logs/cron.log 2>&1
-# 0 3 * * * find /config/logs -name "*.log" -mtime +7 -delete

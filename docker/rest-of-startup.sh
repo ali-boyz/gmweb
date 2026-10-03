@@ -1,17 +1,14 @@
 #!/bin/bash
-# REST-OF-STARTUP.SH: Non-blocking startup phases
-# This script runs async AFTER nginx-setup.sh completes successfully
-# It handles: git clone, NVM, supervisor, services, module installs, XFCE
-# This script is spawned with nohup by custom_startup.sh and runs in background
 
 set +e
 
-# CRITICAL: Unset NPM_CONFIG_PREFIX which conflicts with NVM
 unset NPM_CONFIG_PREFIX
 unset npm_config_prefix
 
 HOME_DIR="/config"
 LOG_DIR="$HOME_DIR/logs"
+STARTUP_SOURCE_URL="https://github.com/AnEntrypoint/gmweb.git"
+STARTUP_COMMIT="1b183446751c633b4c52cd703022482bd5a5be9c"
 
 log() {
   local msg="[rest-of-startup] $(date '+%Y-%m-%d %H:%M:%S') $@"
@@ -23,7 +20,6 @@ log() {
 log "===== REST OF STARTUP PHASES (NON-BLOCKING) ====="
 log "This runs async while nginx and s6-rc proceed independently"
 
-# Detect headless mode
 if [ "$GMWEB_HEADLESS" = "1" ]; then
   log "Running in HEADLESS mode - desktop features disabled"
   IS_HEADLESS=true
@@ -31,21 +27,9 @@ else
   IS_HEADLESS=false
 fi
 
-# Get runtime directory
 ABC_UID=$(id -u abc 2>/dev/null || echo 1000)
 RUNTIME_DIR="/run/user/$ABC_UID"
 
-# ===== PHASE 0 (PRE): D-BUS SESSION BUS =====
-# Headed Chromium (and XFCE's panel/desktop/wm below) hang indefinitely without a
-# real session bus - headless mode skips this dependency entirely, which is why the
-# gap went unnoticed for a long time. Everything downstream (XFCE launcher, the
-# supervisor's own env at Phase 5, agentgui's browser automation) only EXPORTS
-# DBUS_SESSION_BUS_ADDRESS and assumes a daemon is already listening on that socket -
-# nothing did, because the only actual `dbus-daemon --session` invocation in this repo
-# lived in the top-level startup.sh, which line ~483 below only runs if a user has
-# placed a copy at $HOME_DIR/startup.sh - never true on a fresh container. Launch it
-# here, unconditionally, so production boots (no local startup.sh override) get a
-# working bus too.
 mkdir -p "$RUNTIME_DIR"
 chown abc:abc "$RUNTIME_DIR" 2>/dev/null || true
 chmod 700 "$RUNTIME_DIR" 2>/dev/null || true
@@ -63,7 +47,6 @@ else
   log "D-Bus session bus already present at $RUNTIME_DIR/bus"
 fi
 
-# ===== PHASE 0: SYSTEM PACKAGES =====
 log "Phase 0: Installing system packages (APT) - async after nginx"
 apt-get update -qq 2>/dev/null || true
 log "  Installing: unzip jq ttyd chromium git-lfs"
@@ -71,8 +54,6 @@ apt-get install -y --no-install-recommends unzip jq ttyd chromium git-lfs 2>&1 |
 [ $? -eq 0 ] && log "✓ System packages installed" || log "WARNING: System package install incomplete"
 git lfs install 2>/dev/null || true
 
-# Force --no-sandbox on every chromium launch (container runs as root; sandbox always fails).
-# Wrap the real binary so Puppeteer/Playwright/agent-browser get the flag even when they don't pass it.
 log "  Wrapping chromium-browser to always force --no-sandbox..."
 CHROMIUM_REAL_BIN=$(readlink -f /usr/bin/chromium-browser 2>/dev/null || readlink -f /usr/bin/chromium 2>/dev/null)
 if [ -n "$CHROMIUM_REAL_BIN" ] && [ -x "$CHROMIUM_REAL_BIN" ]; then
@@ -94,7 +75,6 @@ else
   log "  WARNING: chromium binary not found, cannot install --no-sandbox wrapper"
 fi
 
-# Install Bun runtime (required for bunx in services)
 log "  Installing Bun runtime..."
 if [ ! -x /usr/local/bin/bun ]; then
   curl -fsSL https://bun.sh/install | BUN_INSTALL=/usr/local bash 2>&1 | tail -2
@@ -106,17 +86,14 @@ else
   log "  WARNING: Bun installation failed - services will fall back to npx"
 fi
 
-# Configure git to use HTTPS for GitHub SSH URLs (for npm dependencies from GitHub)
 log "  Configuring git HTTPS URL rewriting for GitHub..."
 git config --global url."https://github.com/".insteadOf "ssh://git@github.com/" 2>/dev/null || true
 git config --global url."https://github.com/".insteadOf "git@github.com:" 2>/dev/null || true
-# Fix ownership so abc user can access git config for GitHub operations
 sudo chown abc:abc "$HOME_DIR/.gitconfig" 2>/dev/null || true
 sudo chown abc:abc "$HOME_DIR/.git-credentials" 2>/dev/null || true
 log "  ✓ Git URL rewriting configured"
 
-# ===== PHASE 1: GIT CLONE =====
-log "Phase 1: Git clone - get startup files and nginx config (minimal history)"
+log "Phase 1: Fetching startup revision ${STARTUP_COMMIT}"
 
 sudo rm -rf /tmp/gmweb /opt/gmweb-startup/node_modules /opt/gmweb-startup/lib \
        /opt/gmweb-startup/services /opt/gmweb-startup/package* \
@@ -125,7 +102,6 @@ sudo rm -rf /tmp/gmweb /opt/gmweb-startup/node_modules /opt/gmweb-startup/lib \
 
 sudo mkdir -p /opt/gmweb-startup
 
-# Ensure network is ready - one attempt with timeout
 log "  Verifying network connectivity..."
 if timeout 10 curl -fsSL --connect-timeout 5 https://api.github.com/users/AnEntrypoint >/dev/null 2>&1; then
   log "  ✓ Network verified"
@@ -133,11 +109,13 @@ else
   log "  WARNING: Network check failed, attempting clone anyway (may timeout)"
 fi
 
-# Clone with minimal history and data - much faster
 rm -rf /tmp/gmweb 2>/dev/null || true
-if ! timeout 120 git clone --depth 1 --filter=blob:none --single-branch --branch main \
-  https://github.com/AnEntrypoint/gmweb.git /tmp/gmweb 2>&1 | tail -3; then
-  log "ERROR: Git clone failed (network or GitHub unavailable)"
+if ! timeout 120 git init --quiet /tmp/gmweb || \
+   ! timeout 120 git -C /tmp/gmweb remote add origin "$STARTUP_SOURCE_URL" || \
+   ! timeout 120 git -C /tmp/gmweb fetch --depth 1 --filter=blob:none origin "$STARTUP_COMMIT" || \
+   ! timeout 120 git -C /tmp/gmweb checkout --detach --quiet FETCH_HEAD || \
+   [ "$(git -C /tmp/gmweb rev-parse HEAD)" != "$STARTUP_COMMIT" ]; then
+  log "ERROR: Startup revision fetch or integrity verification failed"
   exit 1
 fi
 
@@ -146,16 +124,12 @@ if [ ! -d /tmp/gmweb/startup ]; then
   exit 1
 fi
 
-log "✓ Git clone succeeded"
+log "✓ Startup revision verified: $(git -C /tmp/gmweb rev-parse HEAD)"
 
 cp -r /tmp/gmweb/startup/* /opt/gmweb-startup/
 cp /tmp/gmweb/docker/nginx-sites-enabled-default /opt/gmweb-startup/
 log "✓ Startup files copied to /opt/gmweb-startup"
 
-# ===== PHASE 1.0-cron: EARLY CRONTAB SETUP =====
-# Copy default crontab to /config/crontab BEFORE s6 svc-cron or supervisor starts
-# s6's svc-cron checks crontab -l -u abc on start; if empty it sleeps forever
-# By loading the crontab early, s6 svc-cron starts the real cron daemon
 if [ ! -f /config/crontab ] && [ -f /opt/gmweb-startup/crontab.default ]; then
   log "Phase 1.0-cron: Creating /config/crontab from default template..."
   cp /opt/gmweb-startup/crontab.default /config/crontab
@@ -169,7 +143,6 @@ elif [ -f /config/crontab ]; then
   log "✓ Existing crontab loaded for user abc"
 fi
 
-# ===== PHASE 1.0a: BEFORESTART/BEFOREEND HOOKS =====
 log "Phase 1.0a: Setting up beforestart and beforeend hooks..."
 cp /tmp/gmweb/startup/beforestart /config/beforestart
 cp /tmp/gmweb/startup/beforeend /config/beforeend
@@ -177,14 +150,10 @@ chmod +x /config/beforestart /config/beforeend
 chown abc:abc /config/beforestart /config/beforeend
 log "✓ beforestart and beforeend hooks installed to /config/"
 
-# ===== PHASE 1.0b: BASHRC SETUP =====
 log "Phase 1.0b: Generating perfect .bashrc file..."
 cat > /config/.bashrc << 'BASHRC_EOF'
 #!/bin/bash
-# Auto-generated .bashrc - sources beforestart hook for environment setup
-# This file is regenerated on every boot to ensure perfect consistency
 
-# Source beforestart hook for all environment variables and setup
 if [ -f "${HOME}/.beforestart" ] || [ -f "${HOME}/beforestart" ]; then
   BEFORESTART_HOOK="${HOME}/beforestart"
   [ ! -f "$BEFORESTART_HOOK" ] && BEFORESTART_HOOK="${HOME}/.beforestart"
@@ -193,34 +162,26 @@ if [ -f "${HOME}/.beforestart" ] || [ -f "${HOME}/beforestart" ]; then
   fi
 fi
 
-# Interactive shell features (only in interactive shells)
 if [ -z "$PS1" ]; then
   return
 fi
 
-# Bash history configuration
 export HISTSIZE=10000
 export HISTFILESIZE=20000
 export HISTCONTROL=ignoredups:ignorespace
 
-# Shell options
 shopt -s histappend 2>/dev/null || true
 shopt -s checkwinsize 2>/dev/null || true
 
-# PS1 prompt
 export PS1="\u@\h:\w\$ "
 BASHRC_EOF
 chmod 644 /config/.bashrc
 log "✓ Perfect .bashrc created"
 
-# ===== PHASE 1.0c: PROFILE SETUP =====
 log "Phase 1.0c: Generating perfect .profile file..."
 cat > /config/.profile << 'PROFILE_EOF'
 #!/bin/bash
-# Auto-generated .profile - sources beforestart hook for environment setup
-# This file is regenerated on every boot to ensure perfect consistency
 
-# Source beforestart hook for all environment variables and setup
 if [ -f "${HOME}/.beforestart" ] || [ -f "${HOME}/beforestart" ]; then
   BEFORESTART_HOOK="${HOME}/beforestart"
   [ ! -f "$BEFORESTART_HOOK" ] && BEFORESTART_HOOK="${HOME}/.beforestart"
@@ -232,22 +193,6 @@ PROFILE_EOF
 chmod 644 /config/.profile
 log "✓ Perfect .profile created"
 
-# ===== PHASE 2: NGINX CONFIG UPDATE FROM GIT =====
-log "Phase 2: Update nginx routing from git config"
-mkdir -p /etc/nginx/sites-available /etc/nginx/sites-enabled
-if [ -f /opt/gmweb-startup/nginx-sites-enabled-default ]; then
-  sudo cp /opt/gmweb-startup/nginx-sites-enabled-default /etc/nginx/sites-available/default
-  if sudo nginx -t 2>&1; then
-    sudo nginx -s reload
-    log "✓ Nginx config updated and reloaded from git"
-  else
-    log "✗ Nginx config from git failed validation, keeping previous config"
-  fi
-else
-  log "✗ nginx-sites-enabled-default not found in git clone, skipping reload"
-fi
-
-# Ensure gmweb directory exists and has correct permissions
 GMWEB_DIR="/config/.gmweb"
 sudo mkdir -p "$GMWEB_DIR" && sudo chown -R abc:abc "$GMWEB_DIR" 2>/dev/null || true
 
@@ -258,7 +203,6 @@ sudo mkdir -p /config/nvm /config/.tmp /config/logs /config/.local /config/.loca
 sudo chown 1000:1000 /config/nvm /config/.tmp /config/logs /config/.local /config/.local/bin 2>/dev/null || true
 sudo chmod 755 /config/nvm /config/.tmp /config/logs /config/.local /config/.local/bin 2>/dev/null || true
 
-# Copy NVM compatibility shims to /config (shared across all shells and scripts)
 cp /tmp/gmweb/startup/.nvm_compat.sh /config/.nvm_compat.sh
 cp /tmp/gmweb/startup/.nvm_restore.sh /config/.nvm_restore.sh
 chmod +x /config/.nvm_compat.sh /config/.nvm_restore.sh
@@ -267,7 +211,6 @@ NVM_DIR=/config/nvm
 export NVM_DIR
 log "Persistent paths ready: NVM_DIR=$NVM_DIR"
 
-# Source beforestart hook to set up environment
 log "Phase 1: Sourcing beforestart hook for environment setup..."
 if [ -f /config/beforestart ]; then
   . /config/beforestart
@@ -276,20 +219,14 @@ else
   exit 1
 fi
 
-# ===== PHASE 2: NVM SETUP =====
-# ALWAYS verify Node 24 and npm on every boot (persistent volumes can be corrupted)
 mkdir -p "$NVM_DIR"
 
-# Install NVM if not present
 if [ ! -s "$NVM_DIR/nvm.sh" ]; then
   log "Installing NVM..."
   curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash 2>&1 | tail -3
-  # Re-source beforestart to load the newly installed NVM
   . /config/beforestart
 fi
 
-# ALWAYS guarantee clean npm/npx on every boot
-# Persistent /config volume may have corrupted NVM node_modules
 NODE_DIR="$NVM_DIR/versions/node"
 LATEST_NODE=$(ls -1 "$NODE_DIR" 2>/dev/null | sort -V | tail -1)
 
@@ -300,9 +237,7 @@ else
   NPM_MODULE="$NODE_DIR/$LATEST_NODE/lib/node_modules/npm"
   if [ ! -d "$NPM_MODULE" ]; then
     log "npm missing from $LATEST_NODE, reinstalling Node 24..."
-    # Fix ownership first (may be root-owned from previous boot)
     chown -R abc:abc "$NODE_DIR/$LATEST_NODE" 2>/dev/null || true
-    # Remove and reinstall to get clean npm
     nvm deactivate 2>/dev/null || true
     rm -rf "$NODE_DIR/$LATEST_NODE"
     nvm install 24 2>&1 | tail -5
@@ -311,15 +246,12 @@ else
   fi
 fi
 
-# Ensure node 24 is active and in PATH
 nvm use 24 2>&1 | tail -2
 nvm alias default 24 2>&1 | tail -2
 
-# Fix ownership (nvm install as root creates root-owned files)
 ACTIVE_NODE=$(nvm which current 2>/dev/null | sed 's|/bin/node||')
 [ -d "$ACTIVE_NODE" ] && sudo chown -R abc:abc "$ACTIVE_NODE" 2>/dev/null || true
 
-# Final verification
 if ! command -v npm &>/dev/null; then
   log "ERROR: npm not available after nvm setup"
   log "DEBUG: PATH=$PATH"
@@ -331,24 +263,20 @@ NODE_VERSION=$(node -v | tr -d 'v')
 NPM_VERSION=$(npm -v)
 log "Node.js $NODE_VERSION, npm $NPM_VERSION (NVM_DIR=$NVM_DIR)"
 
-# CRITICAL FIX: Clean and fix npm cache IMMEDIATELY after npm is available
 log "CRITICAL: Fixing npm cache permissions (root-owned files from previous boots)..."
 if [ -d "$GMWEB_DIR/npm-cache" ]; then
-  # Force remove all cache to ensure clean state (corrupted cache causes cascading errors)
   sudo rm -rf "$GMWEB_DIR/npm-cache" 2>/dev/null || true
   mkdir -p "$GMWEB_DIR/npm-cache"
   chmod 777 "$GMWEB_DIR/npm-cache"
   log "  ✓ npm cache cleaned and recreated with proper permissions"
 fi
 
-# Also fix npm-global if it has permission issues
 if [ -d "$GMWEB_DIR/npm-global" ]; then
   sudo chown -R abc:abc "$GMWEB_DIR/npm-global" 2>/dev/null || true
   sudo chmod -R u+rwX,g+rX,o-rwx "$GMWEB_DIR/npm-global" 2>/dev/null || true
   log "  ✓ npm-global permissions fixed"
 fi
 
-# Create npm wrapper if not already created
 if [ ! -f /tmp/gmweb-wrappers/npm-as-abc.sh ]; then
   mkdir -p /tmp/gmweb-wrappers
   cat > /tmp/gmweb-wrappers/npm-as-abc.sh << 'NPM_WRAPPER_EOF'
@@ -373,19 +301,15 @@ NPM_WRAPPER_EOF
   chmod +x /tmp/gmweb-wrappers/npm-as-abc.sh
 fi
 
-# Clear npm cache to prevent cascading permission errors
 sudo -u abc /tmp/gmweb-wrappers/npm-as-abc.sh npm cache clean --force 2>&1 | tail -1 || true
 log "✓ npm cache cleaned and fixed"
 
-# ===== PHASE 3: SUPERVISOR SETUP =====
 log "Setting up supervisor..."
 rm -rf /tmp/gmweb /tmp/_keep_docker_scripts 2>/dev/null || true
 
-# DEFENSIVE: One more npm cache clean right before critical supervisor install
 log "Final npm cache verification before supervisor install..."
 sudo -u abc /tmp/gmweb-wrappers/npm-as-abc.sh npm cache clean --force 2>&1 | tail -1 || true
 
-# CRITICAL: Run supervisor npm install as abc user to prevent root cache contamination
 log "Installing supervisor dependencies as abc user..."
 cd /opt/gmweb-startup && \
   sudo -u abc /tmp/gmweb-wrappers/npm-as-abc.sh npm install --production --omit=dev 2>&1 | tail -3 && \
@@ -397,11 +321,8 @@ cd /opt/gmweb-startup && \
 sudo nginx -t 2>&1 && sudo nginx -s reload || log "✗ Nginx reload failed before supervisor start"
 log "Supervisor ready (fresh from git)"
 
-# ===== PHASE 4: XFCE LAUNCHER SCRIPT =====
 cat > /tmp/launch_xfce_components.sh << 'XFCE_LAUNCHER_EOF'
 #!/bin/bash
-# XFCE Component Launcher for Oracle Kernel Compatibility
-# Launches desktop components after XFCE session manager is ready
 
 export DISPLAY=:1
 export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/1000/bus"
@@ -412,7 +333,6 @@ log() {
   echo "[xfce-launcher] $(date '+%Y-%m-%d %H:%M:%S') $@"
 }
 
-# Give XFCE session a moment to start (s6 manages it independently)
 sleep 15
 
 if ! pgrep -u abc xfce4-session >/dev/null 2>&1; then
@@ -421,11 +341,10 @@ if ! pgrep -u abc xfce4-session >/dev/null 2>&1; then
 fi
 
 log "XFCE session detected, launching components..."
-sleep 2  # Give session a moment to stabilize
+sleep 2
 
 log "Launching XFCE desktop components..."
 
-# Panel (taskbar, clock, system tray)
 if ! pgrep -u abc xfce4-panel >/dev/null 2>&1; then
   sudo -u abc HOME=/config DISPLAY=:1 DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" \
     XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" LD_PRELOAD=/opt/lib/libshim_close_range.so \
@@ -433,7 +352,6 @@ if ! pgrep -u abc xfce4-panel >/dev/null 2>&1; then
   log "xfce4-panel completed"
 fi
 
-# Desktop (wallpaper, icons)
 if ! pgrep -u abc xfdesktop >/dev/null 2>&1; then
   sudo -u abc HOME=/config DISPLAY=:1 DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" \
     XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" LD_PRELOAD=/opt/lib/libshim_close_range.so \
@@ -441,7 +359,6 @@ if ! pgrep -u abc xfdesktop >/dev/null 2>&1; then
   log "xfdesktop completed"
 fi
 
-# Window Manager (borders, titles, Alt+Tab)
 if ! pgrep -u abc xfwm4 >/dev/null 2>&1; then
   sudo -u abc HOME=/config DISPLAY=:1 DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" \
     XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" LD_PRELOAD=/opt/lib/libshim_close_range.so \
@@ -455,8 +372,6 @@ XFCE_LAUNCHER_EOF
 chmod +x /tmp/launch_xfce_components.sh
 log "XFCE launcher script prepared"
 
-# Phase 6: Spawn background installs async BEFORE supervisor (NON-BLOCKING)
-# Must be spawned before supervisor since supervisor blocks indefinitely
 if [ -f /custom-cont-init.d/background-installs.sh ]; then
   log "Phase 6: Spawning background installs async (non-blocking)..."
   nohup bash /custom-cont-init.d/background-installs.sh > "$LOG_DIR/background-installs.log" 2>&1 &
@@ -465,13 +380,11 @@ else
   log "WARNING: background-installs.sh not found at /custom-cont-init.d/"
 fi
 
-# ===== PHASE 5: START SUPERVISOR (DO NOT WAIT FOR BACKGROUND INSTALLS) =====
 log "Phase 5: Starting supervisor (background installs run async)..."
 
 unset NPM_CONFIG_PREFIX
 
 if [ -f /opt/gmweb-startup/start.sh ]; then
-  # CRITICAL: Pass essential environment variables to supervisor
   NVM_DIR=/config/nvm \
   HOME=/config \
   GMWEB_DIR="$GMWEB_DIR" \
@@ -499,16 +412,12 @@ else
   log "ERROR: start.sh not found at /opt/gmweb-startup/start.sh"
 fi
 
-# Launch XFCE components (after supervisor is running) - skip in headless mode
 if [ "$IS_HEADLESS" = "true" ]; then
   log "Skipping XFCE launcher (headless mode)"
 else
   bash /tmp/launch_xfce_components.sh >> "$LOG_DIR/startup.log" 2>&1
   log "XFCE component launcher completed"
 fi
-
-# Optional: run any local startup.sh if it exists
-[ -f "$HOME_DIR/startup.sh" ] && bash "$HOME_DIR/startup.sh" 2>&1 | tee -a "$LOG_DIR/startup.log"
 
 log "===== REST OF STARTUP COMPLETE ====="
 log "All blocking phases complete (supervisor running)"

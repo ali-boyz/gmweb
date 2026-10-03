@@ -31,10 +31,8 @@ export class SupervisorLogger {
         if (statSync(logPath).size > 100 * 1024 * 1024) {
           const rotatedPath = `${logPath}.${Date.now()}`;
           try {
-            // Try fast rename first (works on same filesystem)
             renameSync(logPath, rotatedPath);
           } catch (err) {
-            // If EXDEV (cross-device link), use copy+truncate (works across filesystems)
             if (err.code === 'EXDEV') {
               copyFileSync(logPath, rotatedPath);
               writeFileSync(logPath, '');

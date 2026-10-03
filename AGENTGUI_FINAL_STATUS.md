@@ -99,7 +99,7 @@ The fix is already in git at:
 On container startup:
 1. Git clone copies files to `/opt/gmweb-startup/`
 2. Supervisor loads agentgui.js service definition
-3. Supervisor starts agentgui@latest with bunx
+3. Supervisor starts agentgui@1.0.1126 with bunx
 4. Supervisor background task replaces acp-launcher.js immediately
 5. RippleUI rendering active
 

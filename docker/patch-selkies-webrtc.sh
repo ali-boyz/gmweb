@@ -1,8 +1,4 @@
 #!/bin/bash
-# Ensure Selkies s6-rc service uses WebSocket mode
-# WebRTC mode requires GStreamer (Gst namespace) which is not available
-# WebSocket mode uses JPEG streaming directly without GStreamer dependency
-# Called from custom_startup.sh during Phase 0 before s6-rc services start
 
 set +e
 

@@ -1,9 +1,5 @@
 #!/usr/bin/env node
 
-// Version Check Service - Auto-updates bunx-based services every 60 seconds
-// Checks npm registry for newer versions and restarts services if updates available
-// Runs as standalone service (no port binding required)
-// Non-blocking: never crashes, gracefully handles network errors
 
 import { execSync } from 'child_process';
 import { promisify } from 'util';
@@ -14,10 +10,7 @@ const sleep = promisify(setTimeout);
 
 const NAME = 'version-check';
 
-// Services to monitor for updates
-// Format: { serviceName, bundleName, type: 'npm' | 'github' }
 const SERVICES_TO_MONITOR = [
-  { serviceName: 'agentgui', bundleName: 'agentgui', type: 'npm', localPath: '/config/workspace/agentgui/package.json' },
   { serviceName: 'opencode', bundleName: 'opencode-ai', type: 'npm' },
   { serviceName: 'gm-oc', bundleName: 'gm-oc', type: 'github', github: 'AnEntrypoint/gm-oc' },
   { serviceName: 'proxypilot', bundleName: 'proxypilot', type: 'npm' },
@@ -27,7 +20,7 @@ const SERVICES_TO_MONITOR = [
 class VersionChecker {
   constructor() {
     this.versions = new Map();
-    this.checkInterval = 60000; // 60 seconds
+    this.checkInterval = 60000;
     this.supervisor = null;
   }
 
@@ -37,7 +30,6 @@ class VersionChecker {
     console.log(`${timestamp} ${prefix} ${message}`);
   }
 
-  // Fetch latest version from npm registry via HTTPS
   async getLatestVersion(packageName) {
     return new Promise((resolve) => {
       const timeoutId = setTimeout(() => {
@@ -86,7 +78,6 @@ class VersionChecker {
     });
   }
 
-  // Get currently installed version of a package
   getCurrentVersion(packageName, localPath) {
     if (localPath) {
       try {
@@ -101,7 +92,6 @@ class VersionChecker {
         timeout: 5000
       }).trim();
 
-      // Parse npm list output: "projectname@version"
       const match = result.match(/@([\d.]+[a-z0-9.\-]*)/);
       if (match && match[1]) {
         return match[1];
@@ -113,7 +103,6 @@ class VersionChecker {
     }
   }
 
-  // Compare semantic versions: returns true if versionA > versionB
   isNewerVersion(versionA, versionB) {
     if (!versionA || !versionB) return false;
 
@@ -134,10 +123,8 @@ class VersionChecker {
     return false;
   }
 
-  // Kill service process group to trigger supervisor restart
   async killServiceProcess(serviceName) {
     try {
-      // Find all processes matching the service name pattern
       const patterns = [
         `bunx.*${serviceName}`,
         `node.*${serviceName}`,
@@ -157,17 +144,14 @@ class VersionChecker {
             const pid = parseInt(pidStr, 10);
             if (pid > 0) {
               try {
-                // Try to kill process group
                 process.kill(-pid, 'SIGTERM');
                 await sleep(500);
                 process.kill(-pid, 'SIGKILL');
               } catch (e) {
-                // Process might already be dead
               }
             }
           }
         } catch (e) {
-          // Pattern didn't match anything
         }
       }
 
@@ -179,7 +163,6 @@ class VersionChecker {
     }
   }
 
-  // Get latest GitHub release version
   async getLatestGitHubVersion(repo) {
     return new Promise((resolve) => {
       const timeoutId = setTimeout(() => {
@@ -205,7 +188,6 @@ class VersionChecker {
               const info = JSON.parse(data);
               const tagName = info.tag_name;
               if (tagName) {
-                // Remove 'v' prefix if present
                 const version = tagName.startsWith('v') ? tagName.substring(1) : tagName;
                 resolve(version);
               } else {
@@ -227,7 +209,6 @@ class VersionChecker {
     });
   }
 
-  // Check all monitored services
   async checkForUpdates() {
     this.log('INFO', 'Starting version check cycle');
 
@@ -242,14 +223,12 @@ class VersionChecker {
         }
 
         if (!latestVersion) {
-          // Registry/GitHub unavailable or package not found
           continue;
         }
 
         const currentVersion = this.getCurrentVersion(service.bundleName, service.localPath);
 
         if (!currentVersion) {
-          // Service not installed, skip
           this.log('DEBUG', `Not installed (skipped): ${service.bundleName}`, service.serviceName);
           continue;
         }
@@ -263,11 +242,9 @@ class VersionChecker {
         if (this.isNewerVersion(latestVersion, currentVersion)) {
           this.log('INFO', `Update available: ${currentVersion} -> ${latestVersion}`, service.serviceName);
 
-          // Kill the service to trigger supervisor restart
           await this.killServiceProcess(service.serviceName);
           this.log('INFO', `Restarted service for update`, service.serviceName);
         } else {
-          // Silently skip if already on latest (reduce log spam)
         }
       } catch (e) {
         this.log('ERROR', `Check failed: ${e.message}`, service.serviceName);
@@ -277,31 +254,24 @@ class VersionChecker {
     this.log('DEBUG', 'Version check cycle complete');
   }
 
-  // Main loop - runs forever
   async run() {
     this.log('INFO', 'Version check service started');
     this.log('INFO', `Checking for updates every ${this.checkInterval}ms (60s)`);
 
-    // Stagger initial check by 5 seconds to avoid thundering herd
     await sleep(5000);
 
-    // Perform initial check
     await this.checkForUpdates();
 
-    // Then repeat on interval
     const intervalId = setInterval(() => {
       this.checkForUpdates().catch(e => {
         this.log('ERROR', `Cycle error: ${e.message}`);
-        // Continue running despite errors
       });
     }, this.checkInterval);
 
-    // Keep the service alive forever
     await new Promise(() => {});
   }
 }
 
-// Service definition for supervisor
 export default {
   name: NAME,
   type: 'system',
@@ -313,27 +283,21 @@ export default {
 
     const checker = new VersionChecker();
 
-    // Start checker as background task (fire and forget)
-    // Don't await, so supervisor gets control back immediately
     Promise.resolve().then(() => {
       checker.run().catch(err => {
         console.error(`[${NAME}] Fatal error:`, err.message);
-        // Let supervisor restart this service on health check failure
       });
     });
 
-    // Return immediately to supervisor
     return {
       pid: process.pid,
       process: null,
       cleanup: async () => {
-        // Nothing to cleanup - service runs in supervisor process
       }
     };
   },
 
   async health() {
-    // Version check service is always healthy (background process)
     return true;
   }
 };

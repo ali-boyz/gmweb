@@ -1,30 +1,22 @@
 #!/bin/bash
-# Environment setup hook - sourced by .bashrc, .profile, start.sh, and custom_startup.sh
-# Single source of truth for all gmweb environment variables
-
 export HOME="${HOME:-/config}"
 export NVM_DIR="/config/nvm"
 export GMWEB_DIR="/config/.gmweb"
 export BUN_INSTALL="/config/.gmweb/cache/.bun"
 
-# Temp directory on same filesystem as /config (prevents EXDEV rename errors)
-# Using /config/tmp (without dot) for better visibility
 export TMPDIR="/config/tmp"
 export TMP="/config/tmp"
 export TEMP="/config/tmp"
 
-# XDG directories (prevent /config pollution)
 export XDG_CACHE_HOME="/config/.gmweb/cache"
 export XDG_CONFIG_HOME="/config/.gmweb/cache/.config"
 export XDG_DATA_HOME="/config/.gmweb/cache/.local/share"
 export DOCKER_CONFIG="/config/.gmweb/cache/.docker"
 
-# Runtime and D-Bus
 ABC_UID=$(id -u abc 2>/dev/null || echo 1000)
 export XDG_RUNTIME_DIR="/run/user/$ABC_UID"
 export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
 
-# PATH: Local bin (Claude, etc.), Bun, npm-global (idempotent - only add if not already present)
 case ":$PATH:" in
   *":$HOME/.local/bin:"*) ;;
   *) export PATH="$HOME/.local/bin:$PATH" ;;
@@ -38,7 +30,6 @@ case ":$PATH:" in
   *) export PATH="$GMWEB_DIR/npm-global/bin:$PATH" ;;
 esac
 
-# Load NVM (hide npm config vars that conflict with NVM)
 if [ -f "$HOME/.nvm_compat.sh" ]; then
   . "$HOME/.nvm_compat.sh"
 elif [ -f "/config/.nvm_compat.sh" ]; then
@@ -49,14 +40,12 @@ if [ -s "$NVM_DIR/nvm.sh" ]; then
   . "$NVM_DIR/nvm.sh"
 fi
 
-# Restore npm config after NVM loaded
 if [ -f "$HOME/.nvm_restore.sh" ]; then
   . "$HOME/.nvm_restore.sh"
 elif [ -f "/config/.nvm_restore.sh" ]; then
   . "/config/.nvm_restore.sh"
 fi
 
-# npm config (centralized cache and global prefix)
 export npm_config_cache="$GMWEB_DIR/npm-cache"
 export npm_config_prefix="$GMWEB_DIR/npm-global"
 export NPM_CONFIG_CACHE="$GMWEB_DIR/npm-cache"
@@ -64,9 +53,6 @@ export NPM_CONFIG_PREFIX="$GMWEB_DIR/npm-global"
 
 export NODE_OPTIONS="--no-warnings"
 
-# Chromium / Puppeteer configuration
-# Point all browser automation tools to system chromium (apt-installed, architecture-tested)
-# Prevents puppeteer from downloading its own Chrome binary (saves ~350MB per version)
 export PUPPETEER_EXECUTABLE_PATH="/usr/bin/chromium-browser"
 export CHROME_PATH="/usr/bin/chromium-browser"
 export CHROMIUM_PATH="/usr/bin/chromium-browser"
@@ -74,11 +60,8 @@ export PUPPETEER_SKIP_DOWNLOAD="true"
 export PUPPETEER_CACHE_DIR="/config/.cache/puppeteer"
 export AGENT_BROWSER_EXECUTABLE_PATH="/usr/bin/chromium-browser"
 
-# Cleanup Chromium lock files on boot
-# Prevents "profile appears to be in use" errors after container restart
 _cleanup_chromium_locks() {
   local count=0
-  # Find and remove SingletonLock files from Chromium profiles
   while IFS= read -r lockfile; do
     if [ -n "$lockfile" ]; then
       local profile_dir=$(dirname "$lockfile")
@@ -87,7 +70,6 @@ _cleanup_chromium_locks() {
     fi
   done < <(find /config -name "SingletonLock" -type f 2>/dev/null | grep -E "(chromium|Chrome)" || true)
   
-  # Also check common tmp directories for playwright/puppeteer profiles
   for tmp_dir in /config/tmp /tmp; do
     if [ -d "$tmp_dir" ]; then
       while IFS= read -r lockfile; do
@@ -105,11 +87,8 @@ _cleanup_chromium_locks() {
   fi
 }
 
-# Run cleanup (silently ignore errors)
 _cleanup_chromium_locks 2>/dev/null || true
 
-# GitHub CLI authentication
-# If GITHUB_TOKEN or GH_TOKEN is set, authenticate gh automatically
 _setup_gh_auth() {
   local token="${GITHUB_TOKEN:-${GH_TOKEN:-}}"
   if [ -n "$token" ]; then

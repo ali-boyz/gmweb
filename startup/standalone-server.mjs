@@ -6,7 +6,7 @@ import url from 'url';
 const BASE_DIR = process.env.BASE_DIR || process.env.HOME || '/config';
 const PORT = parseInt(process.env.PORT || 9998);
 const HOSTNAME = process.env.HOSTNAME || '0.0.0.0';
-const PREFIX = '/files'; // Add prefix for kasmproxy routing
+const PREFIX = '/files';
 
 console.log('Starting file-manager server...');
 console.log('BASE_DIR:', BASE_DIR);
@@ -18,20 +18,16 @@ const server = http.createServer(async (req, res) => {
   const parsedUrl = url.parse(req.url, true);
   let pathname = decodeURIComponent(parsedUrl.pathname);
 
-  // Remove the /files prefix if present (kasmproxy strips it, but handle it just in case)
   if (pathname.startsWith(PREFIX + '/')) {
     pathname = pathname.slice(PREFIX.length);
   } else if (pathname === PREFIX) {
     pathname = '/';
   }
 
-  // Normalize path: remove leading/trailing slashes and collapse multiple slashes
   pathname = pathname.replace(/\/+/g, '/').replace(/^\/+/, '').replace(/\/+$/, '');
 
-  // Build full path - use path.join to safely resolve relative paths
   const fullPath = path.join(BASE_DIR, pathname);
 
-  // Security check: ensure the resolved path is within BASE_DIR
   const normalizedBase = path.normalize(BASE_DIR) + path.sep;
   if (!path.normalize(fullPath).startsWith(normalizedBase) && path.normalize(fullPath) !== path.normalize(BASE_DIR)) {
     res.writeHead(403, { 'Content-Type': 'application/json' });
@@ -46,7 +42,6 @@ const server = http.createServer(async (req, res) => {
       const items = files.map(file => {
         const itemPath = path.join(fullPath, file);
         const itemStats = fs.statSync(itemPath);
-        // Build relative path from current directory with /files prefix
         const itemRelativePath = pathname ? path.join(pathname, file).replace(/\\/g, '/') : file;
         const linkPath = `${PREFIX}/${itemRelativePath}`;
         return {
@@ -85,7 +80,6 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-// Bind to all interfaces (:: for IPv6 dual-stack, also accepts IPv4)
 server.listen(PORT, '::', () => {
   console.log(`Server listening on all interfaces :${PORT}`);
   console.log(`Serving files from: ${BASE_DIR}`);

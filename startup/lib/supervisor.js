@@ -23,11 +23,9 @@ export class Supervisor {
     this.logger = new SupervisorLogger(this.config.logDirectory);
     process.on('uncaughtException', (err) => {
       this.logger.log('ERROR', 'Uncaught exception (supervisor continuing)', err);
-      // Don't exit - supervisor must stay alive to manage services
     });
     process.on('unhandledRejection', (reason) => {
       this.logger.log('ERROR', 'Unhandled rejection (supervisor continuing)', reason instanceof Error ? reason : new Error(String(reason)));
-      // Don't exit - supervisor must stay alive to manage services
     });
   }
 
@@ -45,7 +43,7 @@ export class Supervisor {
     this.logger.log('INFO', 'Supervisor starting');
     try {
       if (this.needsDesktop()) await this.waitForDesktop();
-      await this.prepareEnvironment(); // CRITICAL: Ensure directories exist with proper permissions
+      await this.prepareEnvironment();
       this.env = await this.getEnvironment();
       await this.ensureNginxAuth();
       const sorted = topologicalSort(this.services);
@@ -161,8 +159,6 @@ export class Supervisor {
   }
 
   async ensureNginxAuth() {
-    // CRITICAL: PASSWORD must be set in supervisor environment for all auth to work
-    // If PASSWORD is not provided, use fallback but log warning
     let pw = this.env.PASSWORD;
     if (!pw) {
       this.logger.log('WARN', 'PASSWORD not set in supervisor env, using fallback "password"');
@@ -180,8 +176,6 @@ export class Supervisor {
   }
 
   async prepareEnvironment() {
-    // CRITICAL: Ensure all critical directories exist with proper permissions
-    // This must run BEFORE any services start to prevent permission issues
     const homeDir = process.env.HOME || '/config';
     const criticalDirs = [
       homeDir,
@@ -212,7 +206,6 @@ export class Supervisor {
 
     this.logger.log('INFO', 'Preparing environment - ensuring critical directories exist...');
 
-    // Create directories with proper permissions
     for (const dir of criticalDirs) {
       try {
         if (!existsSync(dir)) {
@@ -224,8 +217,6 @@ export class Supervisor {
       }
     }
 
-    // Fix ownership on critical directories (must be abc:abc)
-    // Use sudo for robustness in case supervisor doesn't run as root
     try {
       execSync(`sudo chown -R abc:abc "${homeDir}/.local" 2>/dev/null || true`, { stdio: 'pipe' });
       execSync(`sudo chown -R abc:abc "${homeDir}/.config" 2>/dev/null || true`, { stdio: 'pipe' });
@@ -234,7 +225,6 @@ export class Supervisor {
       execSync(`sudo chown -R abc:abc "${homeDir}/logs" 2>/dev/null || true`, { stdio: 'pipe' });
       execSync(`sudo chown -R abc:abc "${homeDir}/workspace" 2>/dev/null || true`, { stdio: 'pipe' });
       execSync(`sudo chown abc:abc "${homeDir}" 2>/dev/null || true`, { stdio: 'pipe' });
-      // CRITICAL: Fix npm cache permission issues - npm leaves root-owned files sometimes
       execSync(`sudo chown -R abc:abc "${homeDir}/.gmweb/npm-cache" 2>/dev/null || true`, { stdio: 'pipe' });
       execSync(`sudo chown -R abc:abc "${homeDir}/.gmweb/npm-global" 2>/dev/null || true`, { stdio: 'pipe' });
       this.logger.log('INFO', 'Fixed ownership on critical directories');
@@ -242,7 +232,6 @@ export class Supervisor {
       this.logger.log('WARN', `Could not fix ownership: ${e.message}`);
     }
 
-    // Set permissions on critical directories with precise control
     try {
       execSync(`sudo chmod 755 "${homeDir}" 2>/dev/null || true`, { stdio: 'pipe' });
       execSync(`sudo chmod -R 755 "${homeDir}/.local" 2>/dev/null || true`, { stdio: 'pipe' });
@@ -251,7 +240,6 @@ export class Supervisor {
       execSync(`sudo chmod 750 "${homeDir}/.tmp" 2>/dev/null || true`, { stdio: 'pipe' });
       execSync(`sudo chmod 755 "${homeDir}/logs" 2>/dev/null || true`, { stdio: 'pipe' });
       execSync(`sudo chmod 755 "${homeDir}/workspace" 2>/dev/null || true`, { stdio: 'pipe' });
-      // CRITICAL: Fix npm cache permissions - must be 755 for abc user to write
       execSync(`sudo chmod -R 755 "${homeDir}/.gmweb/npm-cache" 2>/dev/null || true`, { stdio: 'pipe' });
       execSync(`sudo chmod -R 755 "${homeDir}/.gmweb/npm-global" 2>/dev/null || true`, { stdio: 'pipe' });
       this.logger.log('INFO', 'Set permissions on critical directories');
@@ -259,7 +247,6 @@ export class Supervisor {
       this.logger.log('WARN', `Could not set permissions: ${e.message}`);
     }
 
-    // Verify opencode installation directory
     const opencodeDir = `${homeDir}/.gmweb/tools/opencode`;
     if (existsSync(opencodeDir)) {
       try {
@@ -278,33 +265,22 @@ export class Supervisor {
     const env = { ...process.env };
     const NVM_BIN = path.dirname(process.execPath);
     const NVM_LIB = path.join(NVM_BIN, '..', 'lib', 'node_modules');
-    // CRITICAL: Use explicit /config/.local/bin for Claude and other local tools
-    // process.env.HOME may not be set correctly during supervisor startup
     const LOCAL_BIN = '/config/.local/bin';
     const GMWEB_BIN = '/config/.gmweb/npm-global/bin';
     const OPENCODE_BIN = '/config/.gmweb/tools/opencode/bin';
     const BUN_BIN = '/config/.gmweb/cache/.bun/bin';
-    // Ensure LOCAL_BIN (for Claude) is at the front of PATH so it's found first
     env.PATH = `${LOCAL_BIN}:${BUN_BIN}:${GMWEB_BIN}:${OPENCODE_BIN}:${NVM_BIN}:${env.PATH || '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'}`;
     env.NODE_PATH = `${NVM_LIB}:${env.NODE_PATH || ''}`;
 
-    // CRITICAL: Only services that directly invoke npm should have npm config
-    // Services that spawn bash shells (webssh2) will get these from .bashrc/.profile
-    // Services that use npm directly (opencode) will set these themselves if needed
     env.npm_config_cache = env.npm_config_cache || '/config/.gmweb/npm-cache';
     env.NPM_CONFIG_CACHE = env.NPM_CONFIG_CACHE || '/config/.gmweb/npm-cache';
 
     const uid = process.getuid?.() || 1000;
 
-    // Ensure all services get the same environment (black magic consistency)
     if (!env.TMPDIR) { env.TMPDIR = '/config/.tmp'; }
     if (!env.TMP) { env.TMP = '/config/.tmp'; }
     if (!env.TEMP) { env.TEMP = '/config/.tmp'; }
 
-    // CRITICAL: Do NOT set PASSWORD fallback here - it was already set by custom_startup.sh
-    // Setting a fallback here overrides the actual PASSWORD passed during deployment
-    // If PASSWORD is missing, that's a configuration error, not something to hide
-    
     if (!env.XDG_CACHE_HOME) { env.XDG_CACHE_HOME = '/config/.gmweb/cache'; }
     if (!env.XDG_CONFIG_HOME) { env.XDG_CONFIG_HOME = '/config/.gmweb/cache/.config'; }
     if (!env.XDG_DATA_HOME) { env.XDG_DATA_HOME = '/config/.gmweb/cache/.local/share'; }

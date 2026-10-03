@@ -2,7 +2,6 @@
 telemetry-id
 
 .code-search/
-# Screenshots and temporary files
 *.png
 *.jpg
 *.jpeg
@@ -17,7 +16,6 @@ telemetry-id
 .gm/last-dispatch-ts
 .codeinsight
 
-# gm-managed: plugkit runtime emissions (transient; disciplines/instructions stay tracked)
 .gm/exec-spool/
 .gm/last-*
 .gm/turn-state.json
@@ -30,5 +28,7 @@ telemetry-id
 .gm/disciplines/codeinsight-vec
 .gm/residual-check-fired
 .gm/witness/
+.gm/
+.agentplug-kv/
 config.bat
 node_modules

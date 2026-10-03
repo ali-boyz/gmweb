@@ -1,3 +1,2 @@
 #!/bin/bash
-# Cleanup hook - sourced at end of shell sessions or before shutdown
-# Currently a no-op placeholder for future cleanup logic
+:

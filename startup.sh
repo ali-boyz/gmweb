@@ -151,13 +151,10 @@ log "✓ System packages installed"
 
 log "Phase 4: Initialize D-Bus and environment"
 
-# Clean npm cache and artifacts - use sudo to handle root-owned files from previous runs
 sudo rm -rf /config/.npm 2>/dev/null || true
 sudo rm -rf /config/node_modules/.bin/* 2>/dev/null || true
 npm cache clean --force 2>/dev/null || true
 
-# Create global npm configuration to prevent permission issues
-# Use a cache directory and set proper permissions
 mkdir -p /config/.npm
 sudo chown -R abc:abc /config/.npm 2>/dev/null || true
 sudo chmod -R 755 /config/.npm 2>/dev/null || true
@@ -169,17 +166,14 @@ NPMRC_EOF
 sudo cp /tmp/npmrc /etc/npmrc 2>/dev/null || true
 rm -f /tmp/npmrc
 
-# Create npm wrapper script that ensures cache consistency
 mkdir -p /config/usr/local/bin
 cat > /config/usr/local/bin/npm-wrapper << 'WRAPPER_EOF'
 #!/bin/bash
-# NPM wrapper - ensures cache permissions before running npm
 sudo chown -R abc:abc /config/.npm 2>/dev/null || true
 exec /config/usr/local/bin/npm.real "$@"
 WRAPPER_EOF
 chmod +x /config/usr/local/bin/npm-wrapper
 
-# Backup original npm and create wrapper
 if [ -f /config/usr/local/bin/npm ] && [ ! -f /config/usr/local/bin/npm.real ]; then
   sudo mv /config/usr/local/bin/npm /config/usr/local/bin/npm.real 2>/dev/null || true
   sudo ln -sf /config/usr/local/bin/npm-wrapper /config/usr/local/bin/npm 2>/dev/null || true
@@ -218,7 +212,6 @@ done
 
 log "Phase 5: Node.js and supervisor setup"
 
-# Set up npm cache directory with proper permissions - use sudo to handle any root-owned files
 sudo mkdir -p "$HOME_DIR/.npm" 2>/dev/null && sudo chown -R abc:abc "$HOME_DIR/.npm" 2>/dev/null || true
 
 BASHRC_MARKER="$HOME_DIR/.gmweb-bashrc-setup"
@@ -249,13 +242,11 @@ if ! command -v node &>/dev/null; then
   log "Installing Node.js via NVM..."
   mkdir -p "$NVM_DIR"
 
-  # Download NVM with error checking
   if ! curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh 2>/dev/null | bash 2>&1 | tail -5; then
     log "ERROR: NVM installation failed"
     exit 1
   fi
 
-  # Source NVM
   if [ ! -f "$NVM_DIR/nvm.sh" ]; then
     log "ERROR: NVM script not found after installation"
     exit 1
@@ -263,7 +254,6 @@ if ! command -v node &>/dev/null; then
 
   . "$NVM_DIR/nvm.sh"
 
-  # Install Node.js
   if ! nvm install --lts 2>&1 | tail -5; then
     log "ERROR: Node.js LTS installation failed"
     exit 1
@@ -275,7 +265,6 @@ else
   log "✓ Node.js already available"
 fi
 
-# Always source NVM to ensure it's loaded
 if [ -s "$NVM_DIR/nvm.sh" ]; then
   . "$NVM_DIR/nvm.sh"
 else
@@ -285,7 +274,6 @@ fi
 
 export NPM_CONFIG_PREFIX=/config/usr/local
 
-# Get Node version and setup paths
 NODE_VERSION=$(node -v 2>/dev/null | tr -d 'v')
 if [ -z "$NODE_VERSION" ]; then
   log "ERROR: Node.js not found after NVM setup"

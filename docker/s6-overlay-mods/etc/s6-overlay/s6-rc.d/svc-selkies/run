@@ -4,7 +4,6 @@ export XCURSOR_THEME=breeze
 export XDG_RUNTIME_DIR=/run/user/1000
 export PULSE_RUNTIME_PATH=/run/user/1000/pulse
 
-# Default sink setup
 if [ ! -f '/dev/shm/audio.lock' ]; then
   WAIT_COUNT=0
   MAX_WAIT=60
@@ -26,38 +25,29 @@ if [ ! -f '/dev/shm/audio.lock' ]; then
   touch /dev/shm/audio.lock
 fi
 
-# Setup dev mode if defined
 if [ ! -z ${DEV_MODE+x} ]; then
-  # Dev deps
   apt-get update
   apt-get install -y \
     nodejs
   npm install -g nodemon
   rm -Rf $HOME/.npm
-  # Frontend setup
   if [[ "${DEV_MODE}" == "core" ]]; then
-    # Core just runs from directory
     cd $HOME/src/addons/gst-web-core
     s6-setuidgid abc npm install
     s6-setuidgid abc npm run serve &
   else
-    # Build core
     cd $HOME/src/addons/gst-web-core
     s6-setuidgid abc npm install
     s6-setuidgid abc npm run build
     s6-setuidgid abc cp dist/selkies-core.js ../${DEV_MODE}/src/
     s6-setuidgid abc nodemon --watch selkies-core.js --exec "npm run build && cp dist/selkies-core.js ../${DEV_MODE}/src/" &
-    # Copy touch gamepad
     s6-setuidgid abc cp ../universal-touch-gamepad/universalTouchGamepad.js ../${DEV_MODE}/src/
     s6-setuidgid abc nodemon --watch ../universal-touch-gamepad/universalTouchGamepad.js --exec "cp ../universal-touch-gamepad/universalTouchGamepad.js ../${DEV_MODE}/src/" &
-    # Copy themes
     s6-setuidgid abc cp -a nginx ../${DEV_MODE}/
-    # Run passed frontend
     cd $HOME/src/addons/${DEV_MODE}
     s6-setuidgid abc npm install
     s6-setuidgid abc npm run serve &
   fi
-  # Run backend
   cd $HOME/src/src
   s6-setuidgid abc \
     nodemon -V --ext py --exec \
@@ -67,11 +57,8 @@ if [ ! -z ${DEV_MODE+x} ]; then
       --debug="true"
 fi
 
-# Ensure DISPLAY is set
 export DISPLAY=${DISPLAY:-:1}
 
-# Wait for X11 to be ready before starting Selkies (max 60 seconds)
-# If X11 is not available, Selkies will still start but may fail with xrandr errors
 WAIT_COUNT=0
 MAX_WAIT=120
 X11_READY=false
@@ -84,8 +71,6 @@ if [ $WAIT_COUNT -lt $MAX_WAIT ]; then
   X11_READY=true
 fi
 
-# Start Selkies with JPEG encoder for universal browser compatibility
-# Note: Selkies may fail to start if X11 is not ready, but we let s6 supervisor handle restarts
 exec s6-setuidgid abc \
   selkies \
     --mode="websockets" \

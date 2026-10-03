@@ -1,4 +1,3 @@
-// Google Cloud SDK installation service
 import { spawn } from 'child_process';
 import { promisify } from 'util';
 
@@ -12,7 +11,6 @@ export default {
   dependencies: [],
 
   async start(env) {
-    // Install gcloud SDK non-interactively
     const ps = spawn('bash', ['-c', `
       curl -sSL https://sdk.cloud.google.com > /tmp/install_gcloud.sh
       bash /tmp/install_gcloud.sh --disable-prompts --install-dir=${HOME_DIR}
@@ -38,7 +36,6 @@ export default {
   async health() {
     try {
       const { execSync } = await import('child_process');
-      // Check both PATH and direct install location
       execSync(`which gcloud || test -f ${HOME_DIR}/google-cloud-sdk/bin/gcloud`, { stdio: 'pipe' });
       return true;
     } catch (e) {

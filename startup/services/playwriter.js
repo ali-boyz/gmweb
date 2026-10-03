@@ -1,4 +1,3 @@
-// Playwriter MCP relay server - maintains WebSocket connection for Playwriter extension
 import { spawn } from 'child_process';
 import { execSync } from 'child_process';
 import { promisify } from 'util';
@@ -16,8 +15,6 @@ export default {
     console.log('[playwriter] Starting Playwriter relay server...');
     
     try {
-      // Start playwriter MCP server in background
-      // Use npx to install and run the latest playwriter package
       const ps = spawn('bash', ['-c', 'npx -y playwriter'], {
         env: { ...env, HOME: '/config' },
         stdio: ['ignore', 'pipe', 'pipe'],
@@ -27,10 +24,8 @@ export default {
 
       ps.unref();
       
-      // Give it a moment to start
       await sleep(3000);
       
-      // Verify it started
       const isRunning = await this.health();
       if (!isRunning) {
         console.log('[playwriter] Warning: Server may not have started successfully');
@@ -58,7 +53,6 @@ export default {
   async health() {
     try {
       const { execSync } = await import('child_process');
-      // Check if port 19988 is listening
       execSync('ss -tlnp 2>/dev/null | grep -q 19988', { stdio: 'pipe' });
       return true;
     } catch (e) {

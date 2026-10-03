@@ -1,14 +1,11 @@
-# Git
 .git
 .gitignore
 .gitattributes
 
-# Version control
 .hg
 .svn
 CVS
 
-# IDEs and editors
 .vscode
 .idea
 *.swp
@@ -22,14 +19,12 @@ CVS
 .eclipse
 .c9
 
-# Package managers
 node_modules
 npm-debug.log
 npm-error.log
 yarn-error.log
 .npm
 
-# Testing
 coverage
 .nyc_output
 .mocha
@@ -37,7 +32,6 @@ coverage
 .tap
 .nyc
 
-# Build outputs
 dist
 build
 out
@@ -46,46 +40,39 @@ out
 *.dylib
 *.dll
 
-# Docker
 Dockerfile
 docker-compose*.yml
 .docker
 .dockerignore
 
-# Documentation
 docs
 *.md
 README*
 CHANGELOG*
 LICENSE*
 
-# CI/CD
 .github
 .gitlab-ci.yml
 .travis.yml
 .circleci
 Jenkinsfile
 
-# Environment
 .env
 .env.*.local
 .env.local
 
-# OS
 *.log
 *.swp
 *.swo
 .DS_Store
 Thumbs.db
 
-# Temporary
 tmp
 temp
 .tmp
 .cache
 .venv
 
-# Node-specific
 .node_modules
 .npm-cache
 .package-lock.json

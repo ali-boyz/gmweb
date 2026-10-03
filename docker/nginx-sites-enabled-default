@@ -34,6 +34,23 @@ server {
     index index.html index.htm;
   }
 
+  location ^~ /desk/api/ {
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_http_version 1.1;
+    proxy_read_timeout 3600s;
+    proxy_send_timeout 3600s;
+    proxy_connect_timeout 3600s;
+    proxy_buffering off;
+    client_max_body_size 10M;
+    rewrite ^/desk/(.*)$ /$1 break;
+    proxy_pass http://127.0.0.1:8082;
+  }
+
   location ^~ /desk/websocket {
     auth_basic "Login Required";
     auth_basic_user_file /etc/nginx/.htpasswd;
@@ -119,12 +136,6 @@ server {
     add_header Content-Type text/plain;
   }
 
-  # agentgui sync WebSocket. Browsers cannot attach the Authorization: Basic
-  # header to a WebSocket handshake, so the server-level auth_basic would 401
-  # the upgrade before it reaches agentgui. agentgui authenticates this socket
-  # itself via the ?token=<PASSWORD> query param (lib/ws-setup.js), so disable
-  # HTTP Basic auth here, exactly like /desk/websocket. Both the bare /sync
-  # (current client) and the BASE_URL-prefixed /gm/sync are routed.
   location = /sync {
     auth_basic off;
     proxy_pass http://127.0.0.1:9897/sync;
@@ -267,6 +278,23 @@ server {
     index index.html index.htm;
   }
 
+  location ^~ /desk/api/ {
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_http_version 1.1;
+    proxy_read_timeout 3600s;
+    proxy_send_timeout 3600s;
+    proxy_connect_timeout 3600s;
+    proxy_buffering off;
+    client_max_body_size 10M;
+    rewrite ^/desk/(.*)$ /$1 break;
+    proxy_pass http://127.0.0.1:8082;
+  }
+
   location ^~ /desk/websocket {
     auth_basic "Login Required";
     auth_basic_user_file /etc/nginx/.htpasswd;
@@ -352,12 +380,6 @@ server {
     add_header Content-Type text/plain;
   }
 
-  # agentgui sync WebSocket. Browsers cannot attach the Authorization: Basic
-  # header to a WebSocket handshake, so the server-level auth_basic would 401
-  # the upgrade before it reaches agentgui. agentgui authenticates this socket
-  # itself via the ?token=<PASSWORD> query param (lib/ws-setup.js), so disable
-  # HTTP Basic auth here, exactly like /desk/websocket. Both the bare /sync
-  # (current client) and the BASE_URL-prefixed /gm/sync are routed.
   location = /sync {
     auth_basic off;
     proxy_pass http://127.0.0.1:9897/sync;

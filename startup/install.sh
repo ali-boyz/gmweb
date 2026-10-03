@@ -1,13 +1,6 @@
 #!/bin/bash
-# gmweb Installation Script - SYSTEM PACKAGES ONLY
-# Runs ONCE during docker build time (RUN bash install.sh in Dockerfile)
-# DO NOT create anything in /config - LinuxServer webtop manages that at startup
-# Idempotent checks NOT needed (runs only once)
-# All output captured by docker build
-
 set -e
 
-# LinuxServer webtop uses 'abc' as the default user
 WEBTOP_USER="abc"
 
 log() {
@@ -16,19 +9,13 @@ log() {
 
 log "===== GMWEB INSTALL START $(date) ====="
 
-# ============================================================================
-# 1. SYSTEM PACKAGES (apt-get)
-# ============================================================================
-
 log "Installing system packages..."
 
-# Ensure apt is functional
 echo "${WEBTOP_USER} ALL=(ALL) NOPASSWD: ALL" | sudo tee -a /etc/sudoers > /dev/null
 sudo apt --fix-broken install -y 2>/dev/null || true
 sudo dpkg --configure -a 2>/dev/null || true
 sudo apt update
 
-# Install packages (including scrot for screenshots, xclip for tmux clipboard)
 sudo apt-get install -y --no-install-recommends \
   curl bash git build-essential ca-certificates jq wget \
   software-properties-common apt-transport-https gnupg openssh-server \
@@ -40,41 +27,28 @@ sudo apt-get install -y --no-install-recommends \
 sudo rm -rf /var/lib/apt/lists/*
 log "✓ System packages installed"
 
-# ============================================================================
-# 2. SSH CONFIGURATION
-# ============================================================================
-
 log "Configuring SSH..."
 
 sudo mkdir -p /run/sshd
 
-# Enable password authentication
 sudo sed -i 's/^#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config || true
 sudo sed -i 's/^PasswordAuthentication no/PasswordAuthentication yes/' /etc/ssh/sshd_config || true
 if ! grep -q '^PasswordAuthentication yes' /etc/ssh/sshd_config; then
   sudo bash -c 'echo "PasswordAuthentication yes" >> /etc/ssh/sshd_config'
 fi
 
-# Enable pubkey authentication
 sudo sed -i 's/^#PubkeyAuthentication yes/PubkeyAuthentication yes/' /etc/ssh/sshd_config || true
 
-# Disable PAM
 sudo sed -i 's/^UsePAM yes/UsePAM no/' /etc/ssh/sshd_config || true
 if ! grep -q '^UsePAM no' /etc/ssh/sshd_config; then
   sudo bash -c 'echo "UsePAM no" >> /etc/ssh/sshd_config'
 fi
 
-# Generate host keys
 sudo /usr/bin/ssh-keygen -A
 
-# Set default password for webtop user
 echo "${WEBTOP_USER}:abc" | sudo chpasswd
 
 log "✓ SSH configured"
-
-# ============================================================================
-# 3. GITHUB CLI
-# ============================================================================
 
 log "Installing GitHub CLI..."
 
@@ -86,39 +60,20 @@ sudo rm -rf /var/lib/apt/lists/*
 
 log "✓ GitHub CLI installed"
 
-# ============================================================================
-# 4. TMUX CONFIGURATION
-# ============================================================================
-
 log "Configuring tmux..."
 
-# Global tmux.conf (system-wide)
 sudo printf 'set -g history-limit 2000\nset -g terminal-overrides "xterm*:smcup@:rmcup@"\nset-option -g allow-rename off\nset-option -g set-titles on\n' | sudo tee /etc/tmux.conf > /dev/null
 
-# User tmux.conf will be created in custom_startup.sh at boot
 log "✓ Global tmux configured (user config at boot time)"
-
-# ============================================================================
-# NOTE: USER HOME SETUP REMOVED
-# ============================================================================
-# No user home files created at build time
-# All setup deferred to allow KasmWeb profile initialization
-# User-specific files should be created by supervisor on second boot
-
-# ============================================================================
-# 8. PROXYPILOT DOWNLOAD
-# ============================================================================
 
 log "Downloading ProxyPilot..."
 
 ARCH=$(uname -m)
 TARGETARCH=$([ "$ARCH" = "x86_64" ] && echo "amd64" || echo "arm64")
 
-# Try to get download URL from GitHub API
 DOWNLOAD_URL=$(curl -s https://api.github.com/repos/Finesssee/ProxyPilot/releases/latest | \
   jq -r ".assets[] | select(.name | contains(\"linux-${TARGETARCH}\")) | .browser_download_url" | head -1)
 
-# Fallback to direct URL pattern if API fails
 if [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" = "null" ]; then
   log "GitHub API failed, trying direct download..."
   DOWNLOAD_URL="https://github.com/Finesssee/ProxyPilot/releases/latest/download/proxypilot-linux-${TARGETARCH}"
@@ -133,12 +88,7 @@ else
   log "WARNING: ProxyPilot download failed - service will be unavailable"
 fi
 
-# ProxyPilot config is downloaded and configured at runtime by the proxypilot service
 log "ProxyPilot configuration will be set up at runtime"
-
-# ============================================================================
-# 9. TTYD WEB TERMINAL
-# ============================================================================
 
 log "Downloading ttyd (web terminal)..."
 
@@ -171,22 +121,10 @@ else
   rm -f /tmp/ttyd
 fi
 
-# ============================================================================
-# 10. PERMISSIONS (moved to custom_startup.sh)
-# ============================================================================
-
 log "Permissions are set at boot time by custom_startup.sh"
-
-# ============================================================================
-# 11. NHFS PRE-BUILDING
-# ============================================================================
 
 log "NHFS will be run via npx at startup (no pre-build needed)"
 log "✓ NHFS HTTP file server ready to launch"
-
-# ============================================================================
-# COMPLETION
-# ============================================================================
 
 log "===== GMWEB INSTALL COMPLETE $(date) ====="
 exit 0

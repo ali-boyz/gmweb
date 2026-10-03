@@ -43,8 +43,7 @@ Services are executed in topological order. Specify dependencies in your service
 ```javascript
 export default {
   name: 'my-service',
-  dependencies: ['service-a', 'service-b'], // Will wait for these
-  // ...
+  dependencies: ['service-a', 'service-b']
 }
 ```
 
@@ -56,14 +55,12 @@ All services automatically get: proper PATH, PASSWORD, FQDN, logging, error hand
 
 ### Option 1: npx CLI wrapper (1 line!)
 ```javascript
-// services/my-cli.js
 import { npxWrapperService } from '../lib/service-templates.js';
 export default npxWrapperService('my-cli', '@org/my-cli-package');
 ```
 
 ### Option 2: Web service on port (1 line!)
 ```javascript
-// services/my-web.js
 import { webServiceOnPort } from '../lib/service-templates.js';
 import { spawn } from 'child_process';
 
@@ -74,7 +71,6 @@ export default webServiceOnPort('my-web', 8000, (env) =>
 
 ### Option 3: System daemon (1 line!)
 ```javascript
-// services/my-daemon.js
 import { systemService } from '../lib/service-templates.js';
 import { spawn } from 'child_process';
 
@@ -85,14 +81,10 @@ export default systemService('my-daemon', (env) =>
 
 ### Option 4: Custom service (if needed)
 ```javascript
-// services/complex-service.js
 import { customService } from '../lib/service-templates.js';
 
 export default customService('complex-service', {
   async start(env) {
-    // All environment variables are set up automatically
-    // env.PATH includes NVM node bin first
-    // env.PASSWORD and env.FQDN are available
     console.log('[complex-service] Starting...');
     return { pid, process, cleanup };
   },

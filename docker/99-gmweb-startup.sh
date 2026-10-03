@@ -1,6 +1,4 @@
 #!/bin/bash
-# LinuxServer init script - executes GMWeb custom_startup.sh
-# Follows https://docs.linuxserver.io/general/container-customization/
 
 set -e
 
@@ -8,7 +6,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 echo "[gmweb-init] GMWeb initialization starting at $(date)"
 
-# Search for custom_startup.sh in multiple locations
 STARTUP_SCRIPT=""
 for location in \
   "$SCRIPT_DIR/custom_startup.sh" \

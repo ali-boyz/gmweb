@@ -17,14 +17,6 @@ export function createNpxWrapper(binPath, packageName) {
   }
 }
 
-/**
- * Ensures a directory exists with proper permissions for the abc user.
- * This is a critical utility to prevent permission issues across all services.
- * 
- * @param {string} dir - The directory path to ensure exists
- * @param {string} serviceName - Name of the service (for logging)
- * @returns {boolean} - Whether the directory is ready for use
- */
 export function ensureDirectory(dir, serviceName = 'service') {
   try {
     if (!existsSync(dir)) {
@@ -32,17 +24,14 @@ export function ensureDirectory(dir, serviceName = 'service') {
       console.log(`[${serviceName}] Created directory: ${dir}`);
     }
 
-    // Fix ownership to abc:abc with sudo for robustness
     try {
       execSync(`sudo chown abc:abc "${dir}" 2>/dev/null || true`, { stdio: 'pipe' });
-      // Use more restrictive permissions for sensitive dirs, 755 for others
       if (dir.includes('.config') || dir.includes('.tmp')) {
         execSync(`sudo chmod 750 "${dir}" 2>/dev/null || true`, { stdio: 'pipe' });
       } else {
         execSync(`sudo chmod 755 "${dir}" 2>/dev/null || true`, { stdio: 'pipe' });
       }
     } catch (e) {
-      // Non-fatal: directory exists but ownership fix failed
       console.log(`[${serviceName}] Warning: Could not fix ownership for ${dir}: ${e.message}`);
     }
 
@@ -53,14 +42,6 @@ export function ensureDirectory(dir, serviceName = 'service') {
   }
 }
 
-/**
- * Ensures critical service directories exist with proper permissions.
- * This function sets up the standard directory structure that services expect.
- * 
- * @param {string} homeDir - The home directory (usually /config)
- * @param {string} serviceName - Name of the service (for logging)
- * @param {Array<string>} extraDirs - Additional directories specific to this service
- */
 export function ensureServiceEnvironment(homeDir, serviceName = 'service', extraDirs = []) {
   const dirs = [
     homeDir,
@@ -82,7 +63,6 @@ export function ensureServiceEnvironment(homeDir, serviceName = 'service', extra
     ensureDirectory(dir, serviceName);
   }
   
-  // Fix ownership on critical parent directories with recursive chown and chmod
   try {
     execSync(`sudo chown -R abc:abc "${homeDir}/.local" 2>/dev/null || true`, { stdio: 'pipe' });
     execSync(`sudo chmod -R 755 "${homeDir}/.local" 2>/dev/null || true`, { stdio: 'pipe' });
@@ -140,8 +120,6 @@ export async function gitCloneOrUpdate(repoUrl, targetDir, env) {
 }
 
 export function spawnAsAbcUser(command, env) {
-  // Use bash -l (login shell) to ensure .profile and .bashrc are sourced,
-  // which sets up PATH with NVM bin directory and other tools
   return spawn('sudo', ['-u', 'abc', '-E', 'bash', '-l', '-c', command], {
     stdio: ['pipe', 'pipe', 'pipe'],
     detached: true,

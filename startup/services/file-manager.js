@@ -18,10 +18,8 @@ export default {
      return new Promise((resolve, reject) => {
        const childEnv = { ...env, PORT: '9998', HOSTNAME: 'localhost' };
 
-       // Try bunx first, fall back to npx if Bun is not installed
        let command = 'bunx';
        let args = ['fsbrowse@latest'];
-       let useFallback = false;
        
         try {
           execSync('which bunx', { stdio: 'pipe' });
@@ -30,7 +28,6 @@ export default {
          console.log('[file-manager] ⚠ bunx not available, falling back to npx');
          console.log(`[file-manager] Error details: ${e.message}`);
          console.log(`[file-manager] PATH: ${env.PATH}`);
-         useFallback = true;
          command = 'npx';
          args = ['-y', 'fsbrowse@latest'];
        }
@@ -42,7 +39,6 @@ export default {
          detached: false
        });
 
-       // Log any startup errors
        ps.on('error', (err) => {
          console.error(`[file-manager] Failed to spawn process: ${err.message}`);
          reject(new Error(`Failed to start fsbrowse: ${err.message}`));

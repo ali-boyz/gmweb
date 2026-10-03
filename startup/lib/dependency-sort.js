@@ -8,11 +8,10 @@ export function topologicalSort(services) {
     if (visiting.has(name)) return false;
     visiting.add(name);
     const service = services.get(name);
-    // CRITICAL: Check if service exists before accessing properties
     if (!service) {
       console.error(`[topologicalSort] Service '${name}' not found in services map`);
       visiting.delete(name);
-      return true; // Skip missing services rather than crashing
+      return true;
     }
     if (service.dependencies && Array.isArray(service.dependencies)) {
       for (const dep of service.dependencies) {
@@ -36,14 +35,12 @@ export function groupByDependency(sorted, logger) {
   const serviceToGroup = new Map();
 
   for (const service of sorted) {
-    // CRITICAL: Skip null/undefined services
     if (!service || !service.name) {
       console.error('[groupByDependency] Skipping invalid service entry:', service);
       continue;
     }
     
     let groupIndex = 0;
-    // Safely check dependencies
     if (service.dependencies && Array.isArray(service.dependencies) && service.dependencies.length > 0) {
       for (const dep of service.dependencies) {
         const depGroup = serviceToGroup.get(dep);

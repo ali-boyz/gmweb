@@ -1,16 +1,7 @@
-// Simple service templates - dead simple to add new services
-// Every service automatically gets: proper PATH, PASSWORD, FQDN, error handling, logging
 import { existsSync } from 'fs';
 import { dirname } from 'path';
 import { createNpxWrapper, precacheNpmPackage } from './service-utils.js';
 
-/**
- * DEAD SIMPLE: npxWrapperService
- * For CLI tools that just need an npx wrapper created
- * 
- * Usage:
- * export default npxWrapperService('my-cli', '@org/my-cli-package');
- */
 export function npxWrapperService(name, packageName) {
   const binPath = `${dirname(process.execPath)}/${name}`;
   
@@ -38,16 +29,6 @@ export function npxWrapperService(name, packageName) {
   };
 }
 
-/**
- * DEAD SIMPLE: webServiceOnPort
- * For web services that listen on a port
- * Automatically handles: port listening, environment setup, logging
- * 
- * Usage:
- * export default webServiceOnPort('my-web', 8000, (env) => 
- *   spawn('some-server', ['--port', '8000'], { env })
- * );
- */
 export function webServiceOnPort(name, port, spawnerFn) {
   return {
     name,
@@ -98,15 +79,6 @@ export function webServiceOnPort(name, port, spawnerFn) {
   };
 }
 
-/**
- * DEAD SIMPLE: systemService
- * For system daemons (tmux, sshd, etc)
- * 
- * Usage:
- * export default systemService('my-daemon', (env) =>
- *   spawn('daemon-binary', [...args], { env })
- * );
- */
 export function systemService(name, spawnerFn) {
   return {
     name,
@@ -140,23 +112,11 @@ export function systemService(name, spawnerFn) {
     },
 
     async health() {
-      // Override in your service if needed
       return true;
     }
   };
 }
 
-/**
- * DEAD SIMPLE: customService
- * For services that need custom logic
- * Just provide start() and health() functions
- * 
- * Usage:
- * export default customService('my-service', {
- *   async start(env) { ... },
- *   async health() { ... }
- * });
- */
 export function customService(name, { start, health, type = 'system', dependencies = [], requiresDesktop = false }) {
   return {
     name,

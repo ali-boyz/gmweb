@@ -176,13 +176,10 @@ For fresh deployment, ensure:
 Test that everything is working:
 
 ```bash
-# Test API
 curl -u abc:Test123456 http://localhost/gm/api/agents
 
-# Test file creation through CLI
 cd /tmp && echo 'test prompt' | claude --dangerously-skip-permissions --allow-dangerously-skip-permissions
 
-# Check database
 HOME=/config bun << 'EOF'
 import Database from 'bun:sqlite';
 import path from 'path';
